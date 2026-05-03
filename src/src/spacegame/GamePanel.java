@@ -18,7 +18,7 @@ import java.util.Random;
 
 /**
  * The main game panel that contains the game loop and renders all game elements.
- * Manages stars, player, obstacles, power-ups, score, timer, and game state.
+ * Manages stars, player, obstacles, bullets, power-ups, score, timer, and game state.
  */
 public class GamePanel extends JPanel implements KeyListener {
 
@@ -42,6 +42,9 @@ public class GamePanel extends JPanel implements KeyListener {
 
     /** List of background stars. */
     private ArrayList<Star> stars;
+
+    /** List of active bullets fired by the player. */
+    private ArrayList<Bullet> bullets;
 
     /** Current player score. */
     private int score;
@@ -70,6 +73,12 @@ public class GamePanel extends JPanel implements KeyListener {
     /** Counter used to throttle power-up spawning. */
     private int powerUpSpawnCounter;
 
+    /** Tracks time between shots to prevent spamming. */
+    private int shootCooldown;
+
+    /** Number of frames required between each shot. */
+    private final int shootCooldownMax = 15;
+
     /** Random number generator for spawning. */
     private final Random random = new Random();
 
@@ -77,16 +86,26 @@ public class GamePanel extends JPanel implements KeyListener {
     private Timer gameTimer;
 
     /**
-     * Constructs the GamePanel, sets preferred size, background color, and key listener.
+     * Constructs the GamePanel, sets preferred size, background color,
+     * key listener, and mouse listener.
      */
     public GamePanel() {
         setPreferredSize(new Dimension(screenWidth, screenHeight));
         setBackground(Color.BLACK);
         setFocusable(true);
         addKeyListener(this);
+
+        // Mouse click to fire
+        addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                if (gameRunning && !gamePaused) {
+                    fireBullet();
+                }
+            }
+        });
+
         initGame();
-        // Start looping background music
-        SoundManager.startBackgroundMusic("shoot_00.wav");
     }
 
     /**
@@ -97,6 +116,7 @@ public class GamePanel extends JPanel implements KeyListener {
         obstacles = new ArrayList<>();
         powerUps = new ArrayList<>();
         stars = new ArrayList<>();
+        bullets = new ArrayList<>();
         score = 0;
         level = 1;
         timeRemaining = 60;
@@ -105,10 +125,13 @@ public class GamePanel extends JPanel implements KeyListener {
         gamePaused = false;
         obstacleSpawnCounter = 0;
         powerUpSpawnCounter = 0;
+        shootCooldown = 0;
 
         for (int i = 0; i < 120; i++) {
             stars.add(new Star(screenWidth, screenHeight));
         }
+
+        SoundManager.startBackgroundMusic("shoot_00.wav");
     }
 
     /**
@@ -125,12 +148,36 @@ public class GamePanel extends JPanel implements KeyListener {
     }
 
     /**
+     * Fires a bullet from the center top of the player ship.
+     * Enforces a cooldown between shots and plays the fire sound.
+     */
+    private void fireBullet() {
+        if (shootCooldown <= 0) {
+            int bulletX = player.getX() + player.getWidth() / 2 - 2;
+            int bulletY = player.getY();
+            bullets.add(new Bullet(bulletX, bulletY));
+            SoundManager.playFire();
+            shootCooldown = shootCooldownMax;
+        }
+    }
+
+    /**
      * Updates all game objects and game state each frame.
      * Handles spawning, movement, collisions, timer, and level progression.
      */
     private void update() {
+        // Update player
         player.update(screenWidth, screenHeight);
 
+        // Update shoot cooldown
+        if (shootCooldown > 0) shootCooldown--;
+
+        // Update stars
+        for (Star star : stars) {
+            star.update();
+        }
+
+        // Countdown timer
         timerTicks++;
         if (timerTicks >= ticksPerSecond) {
             timerTicks = 0;
@@ -141,13 +188,16 @@ public class GamePanel extends JPanel implements KeyListener {
             }
         }
 
+        // Level progression
         if (score >= 20 && level == 1) {
             level = 2;
         }
 
+        // Spawn rates based on level
         int spawnRate = (level == 1) ? 60 : 35;
         int baseSpeed = (level == 1) ? 3 : 5;
 
+        // Spawn obstacles
         obstacleSpawnCounter++;
         if (obstacleSpawnCounter >= spawnRate) {
             obstacleSpawnCounter = 0;
@@ -156,6 +206,7 @@ public class GamePanel extends JPanel implements KeyListener {
             obstacles.add(new Obstacle(ox, -64, speed));
         }
 
+        // Spawn power-ups
         powerUpSpawnCounter++;
         if (powerUpSpawnCounter >= 300) {
             powerUpSpawnCounter = 0;
@@ -163,10 +214,40 @@ public class GamePanel extends JPanel implements KeyListener {
             powerUps.add(new PowerUp(px, -24));
         }
 
+        // Update bullets and check collisions with obstacles
+        Iterator<Bullet> bulletIter = bullets.iterator();
+        while (bulletIter.hasNext()) {
+            Bullet bullet = bulletIter.next();
+            bullet.update();
+
+            if (bullet.isOffScreen()) {
+                bulletIter.remove();
+                continue;
+            }
+
+            // Check bullet vs obstacle collision
+            boolean bulletHit = false;
+            Iterator<Obstacle> obsHitIter = obstacles.iterator();
+            while (obsHitIter.hasNext()) {
+                Obstacle obs = obsHitIter.next();
+                if (bullet.getBounds().intersects(obs.getBounds())) {
+                    bulletIter.remove();
+                    obsHitIter.remove();
+                    score += 2;
+                    SoundManager.playCollision();
+                    bulletHit = true;
+                    break;
+                }
+            }
+            if (bulletHit) continue;
+        }
+
+        // Update obstacles and check player collision
         Iterator<Obstacle> obsIter = obstacles.iterator();
         while (obsIter.hasNext()) {
             Obstacle obs = obsIter.next();
             obs.update();
+
             if (obs.isOffScreen(screenHeight)) {
                 obsIter.remove();
                 score++;
@@ -182,10 +263,12 @@ public class GamePanel extends JPanel implements KeyListener {
             }
         }
 
+        // Update power-ups and check player collision
         Iterator<PowerUp> puIter = powerUps.iterator();
         while (puIter.hasNext()) {
             PowerUp pu = puIter.next();
             pu.update();
+
             if (pu.isOffScreen(screenHeight)) {
                 puIter.remove();
             } else if (pu.getBounds().intersects(player.getBounds())) {
@@ -206,15 +289,27 @@ public class GamePanel extends JPanel implements KeyListener {
         Graphics2D g2 = (Graphics2D) g;
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
+        // Draw stars
         for (Star star : stars) {
             star.draw(g2);
         }
 
         if (gameRunning || gamePaused) {
+            // Draw power-ups
             for (PowerUp pu : powerUps) pu.draw(g2);
+
+            // Draw obstacles
             for (Obstacle obs : obstacles) obs.draw(g2);
+
+            // Draw bullets
+            for (Bullet bullet : bullets) bullet.draw(g2);
+
+            // Draw player
             player.draw(g2);
+
+            // Draw HUD
             drawHUD(g2);
+
         } else {
             drawGameOver(g2);
         }
@@ -223,38 +318,46 @@ public class GamePanel extends JPanel implements KeyListener {
     }
 
     /**
-     * Draws the Heads-Up Display showing score in blue, health, timer, level, and shield status.
+     * Draws the HUD showing score in blue, health, timer, level, and shield status.
      *
      * @param g2 The Graphics2D context to draw on.
      */
     private void drawHUD(Graphics2D g2) {
+        // Score in blue
         g2.setFont(new Font("Arial", Font.BOLD, 20));
         g2.setColor(Color.BLUE);
         g2.drawString("Score: " + score, 10, 30);
 
+        // Health
         g2.setColor(Color.WHITE);
         g2.drawString("Health: " + player.getHealth() + "/" + player.getMaxHealth(), 10, 55);
 
+        // Timer
         g2.setColor(timeRemaining <= 10 ? Color.RED : Color.WHITE);
         g2.drawString("Time: " + timeRemaining + "s", 10, 80);
 
+        // Level
         g2.setColor(Color.YELLOW);
         g2.drawString("Level: " + level, 10, 105);
 
+        // Shield indicator
         if (player.isShieldActive()) {
             g2.setColor(new Color(0, 200, 255));
             g2.drawString("[ SHIELD ON ]", screenWidth / 2 - 55, 30);
         }
 
+        // Level 2 warning
         if (level == 2) {
             g2.setColor(new Color(255, 80, 80));
             g2.setFont(new Font("Arial", Font.BOLD, 14));
             g2.drawString("LEVEL 2 - DANGER ZONE!", screenWidth - 220, 30);
         }
 
+        // Controls
         g2.setFont(new Font("Arial", Font.PLAIN, 11));
         g2.setColor(new Color(180, 180, 180));
-        g2.drawString("WASD/Arrows=Move  SPACE=Shield  P=Pause  R=Restart", 10, screenHeight - 10);
+        g2.drawString("WASD/Arrows=Move  SPACE=Shield  Click=Fire  P=Pause  R=Restart",
+                10, screenHeight - 10);
     }
 
     /**
@@ -296,7 +399,7 @@ public class GamePanel extends JPanel implements KeyListener {
     }
 
     /**
-     * Handles key press events for player movement, shield activation, pause, and restart.
+     * Handles key press events for movement, shield, pause, and restart.
      *
      * @param e The KeyEvent triggered by a key press.
      */
@@ -304,13 +407,13 @@ public class GamePanel extends JPanel implements KeyListener {
     public void keyPressed(KeyEvent e) {
         int code = e.getKeyCode();
         switch (code) {
-            case KeyEvent.VK_W: case KeyEvent.VK_UP:    player.setMovingUp(true);     break;
-            case KeyEvent.VK_S: case KeyEvent.VK_DOWN:  player.setMovingDown(true);   break;
-            case KeyEvent.VK_A: case KeyEvent.VK_LEFT:  player.setMovingLeft(true);   break;
-            case KeyEvent.VK_D: case KeyEvent.VK_RIGHT: player.setMovingRight(true);  break;
+            case KeyEvent.VK_W: case KeyEvent.VK_UP:    player.setMovingUp(true);    break;
+            case KeyEvent.VK_S: case KeyEvent.VK_DOWN:  player.setMovingDown(true);  break;
+            case KeyEvent.VK_A: case KeyEvent.VK_LEFT:  player.setMovingLeft(true);  break;
+            case KeyEvent.VK_D: case KeyEvent.VK_RIGHT: player.setMovingRight(true); break;
             case KeyEvent.VK_SPACE:
                 if (!player.isShieldActive()) {
-                    SoundManager.playShield(); // only plays when first activated
+                    SoundManager.playShield();
                 }
                 player.setShieldActive(true);
                 break;
@@ -332,10 +435,10 @@ public class GamePanel extends JPanel implements KeyListener {
     public void keyReleased(KeyEvent e) {
         int code = e.getKeyCode();
         switch (code) {
-            case KeyEvent.VK_W: case KeyEvent.VK_UP:    player.setMovingUp(false);     break;
-            case KeyEvent.VK_S: case KeyEvent.VK_DOWN:  player.setMovingDown(false);   break;
-            case KeyEvent.VK_A: case KeyEvent.VK_LEFT:  player.setMovingLeft(false);   break;
-            case KeyEvent.VK_D: case KeyEvent.VK_RIGHT: player.setMovingRight(false);  break;
+            case KeyEvent.VK_W: case KeyEvent.VK_UP:    player.setMovingUp(false);    break;
+            case KeyEvent.VK_S: case KeyEvent.VK_DOWN:  player.setMovingDown(false);  break;
+            case KeyEvent.VK_A: case KeyEvent.VK_LEFT:  player.setMovingLeft(false);  break;
+            case KeyEvent.VK_D: case KeyEvent.VK_RIGHT: player.setMovingRight(false); break;
             case KeyEvent.VK_SPACE:                      player.setShieldActive(false); break;
         }
     }
