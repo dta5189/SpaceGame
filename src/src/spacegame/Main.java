@@ -1,6 +1,5 @@
 /** Project: Solo Lab 7 Assignment
- * Purpose Details: Represents the player spaceship with movement, shooting,
- *                  health, and shield mechanics.
+ * Purpose Details: Main entry point for the Space Game application.
  * Course: IST 242
  * Author: David Adeleye
  * Date Developed: 2025-04-29
@@ -10,6 +9,7 @@
 package spacegame;
 
 import javax.swing.JFrame;
+import javax.swing.SwingUtilities;
 
 /**
  * Main entry point for the Space Game application.
@@ -23,16 +23,20 @@ public class Main {
      * @param args Command-line arguments (not used).
      */
     public static void main(String[] args) {
-        JFrame window = new JFrame("Space Game - David Adeleye");
-        window.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        window.setResizable(false);
+        SwingUtilities.invokeLater(() -> {
+            JFrame window = new JFrame("Space Game - David Adeleye");
+            window.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+            window.setResizable(false);
 
-        GamePanel gamePanel = new GamePanel();
-        window.add(gamePanel);
-        window.pack();
-        window.setLocationRelativeTo(null);
-        window.setVisible(true);
+            GamePanel gamePanel = new GamePanel();
+            window.add(gamePanel);
+            window.pack();
+            window.setLocationRelativeTo(null);
+            window.setVisible(true);
 
-        gamePanel.startGameLoop();
+            // Request focus so keyboard input works immediately
+            gamePanel.requestFocusInWindow();
+            gamePanel.startGameLoop();
+        });
     }
 }

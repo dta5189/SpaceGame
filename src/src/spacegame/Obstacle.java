@@ -88,6 +88,8 @@ public class Obstacle {
      * Updates the obstacle's position and animation frame each game loop tick.
      */
     public void update() {
+
+
         y += speed;
 
         animCounter++;
@@ -95,6 +97,8 @@ public class Obstacle {
             currentFrame = (currentFrame + 1) % totalFrames;
             animCounter = 0;
         }
+
+
     }
 
     /**

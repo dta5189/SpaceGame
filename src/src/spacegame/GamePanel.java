@@ -85,6 +85,8 @@ public class GamePanel extends JPanel implements KeyListener {
         setFocusable(true);
         addKeyListener(this);
         initGame();
+        // Start looping background music
+        SoundManager.startBackgroundMusic("shoot_00.wav");
     }
 
     /**
@@ -306,7 +308,12 @@ public class GamePanel extends JPanel implements KeyListener {
             case KeyEvent.VK_S: case KeyEvent.VK_DOWN:  player.setMovingDown(true);   break;
             case KeyEvent.VK_A: case KeyEvent.VK_LEFT:  player.setMovingLeft(true);   break;
             case KeyEvent.VK_D: case KeyEvent.VK_RIGHT: player.setMovingRight(true);  break;
-            case KeyEvent.VK_SPACE:                      player.setShieldActive(true); break;
+            case KeyEvent.VK_SPACE:
+                if (!player.isShieldActive()) {
+                    SoundManager.playShield(); // only plays when first activated
+                }
+                player.setShieldActive(true);
+                break;
             case KeyEvent.VK_P:
                 if (gameRunning) gamePaused = !gamePaused;
                 break;
